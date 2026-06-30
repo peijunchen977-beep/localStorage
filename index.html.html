@@ -1,0 +1,501 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover" />
+<title>旅遊願望手帳</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/2.47.0/iconfont/tabler-icons.min.css" />
+<style>
+  :root {
+    --cream: #fdf1d8;
+    --pink: #f7d9d0;
+    --pink-deep: #d4537e;
+    --ink: #5a4a42;
+    --ink-soft: #8a7b72;
+    --card: #fffdf8;
+    --border: rgba(90, 74, 66, 0.12);
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: 'Hiragino Sans', 'Noto Sans TC', system-ui, sans-serif; color: var(--ink); }
+  #app { position: relative; height: 100dvh; width: 100%; overflow: hidden; background: var(--cream); }
+  #map { position: absolute; inset: 0; }
+  .leaflet-container { background: #f7f3ec; font-family: inherit; }
+
+  .fab { position: absolute; bottom: 24px; width: 52px; height: 52px; border-radius: 50%; background: var(--card); border: 1px solid var(--border); box-shadow: 0 4px 14px rgba(90,74,66,0.18); display: flex; align-items: center; justify-content: center; font-size: 22px; color: var(--pink-deep); z-index: 15; }
+  .fab--radar { right: 16px; }
+  .fab--add { left: 16px; width: auto; padding: 0 18px; border-radius: 999px; font-size: 13px; gap: 6px; }
+
+  .top-bar { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 20; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .pill { background: var(--card); border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 12px; color: var(--ink-soft); box-shadow: 0 2px 8px rgba(90,74,66,0.1); }
+
+  .overlay { position: fixed; inset: 0; background: rgba(90,74,66,0.35); z-index: 40; display: flex; align-items: flex-end; }
+  .overlay.hidden { display: none; }
+  .sheet { width: 100%; max-height: 86vh; overflow-y: auto; background: var(--card); border-radius: 24px 24px 0 0; padding: 12px 20px 28px; animation: slideUp 0.3s cubic-bezier(0.2,0.9,0.3,1.2); }
+  @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+  .handle { width: 36px; height: 4px; border-radius: 999px; background: var(--border); margin: 4px auto 16px; }
+
+  .badge { display: inline-block; font-size: 11px; padding: 2px 10px; border-radius: 999px; background: var(--pink); color: var(--pink-deep); }
+  .sheet h2 { font-size: 19px; font-weight: 500; margin: 6px 0 2px; }
+  .sheet .addr { font-size: 12px; color: var(--ink-soft); margin: 0 0 16px; }
+
+  .field { display: block; width: 100%; border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px; margin-bottom: 10px; font-family: inherit; }
+  select.field { background: #fff; }
+  textarea.field { resize: none; min-height: 70px; }
+
+  .btn { border: none; border-radius: 999px; padding: 10px 18px; font-size: 13px; cursor: pointer; width: 100%; }
+  .btn--primary { background: var(--pink-deep); color: #fff; }
+  .btn--primary:disabled { opacity: 0.5; }
+  .btn--ghost { background: transparent; border: 1px solid var(--border); color: var(--ink-soft); }
+  .btn-row { display: flex; gap: 8px; }
+  .btn-row .btn { flex: 1; }
+
+  .review-card { display: flex; gap: 10px; padding: 10px 0; border-top: 1px solid var(--border); }
+  .review-card__avatar { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 12px; flex-shrink: 0; background: var(--pink-deep); }
+  .review-card__name { font-weight: 500; font-size: 13px; }
+  .review-card__note { font-size: 13px; color: var(--ink-soft); margin: 4px 0 0; }
+  .review-card__photos { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+  .review-card__photos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; }
+
+  .rating-row { display: flex; gap: 8px; margin: 6px 0 16px; }
+  .rating-icon { background: none; border: none; font-size: 26px; cursor: pointer; padding: 0; color: var(--ink-soft); transition: transform 0.2s; }
+  .rating-icon.active { color: var(--pink-deep); }
+  .rating-icon.pop { transform: scale(1.3) rotate(-6deg); }
+
+  .photo-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 12px; }
+  .photo-slot { aspect-ratio: 1/1; border-radius: 10px; border: 1px dashed var(--border); display: flex; align-items: center; justify-content: center; cursor: pointer; position: relative; overflow: hidden; background: #fff; font-size: 20px; color: var(--ink-soft); }
+  .photo-slot img { width: 100%; height: 100%; object-fit: cover; }
+  .photo-slot .remove { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; background: #fff; border: 1px solid var(--border); display: flex; align-items: center; justify-content: center; font-size: 10px; }
+
+  .empty-hint { font-size: 13px; color: var(--ink-soft); }
+
+  .banner { position: absolute; top: 12px; left: 12px; right: 12px; z-index: 30; background: var(--card); border-radius: 18px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(90,74,66,0.18); padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+  .banner p { margin: 0; }
+  .banner .title { font-size: 13px; color: var(--pink-deep); }
+  .banner .name { font-size: 15px; font-weight: 500; margin-top: 4px; }
+  .banner .actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .banner .btn { width: auto; }
+
+  .join-screen { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 24px; background: var(--cream); }
+  .join-card { width: 100%; max-width: 320px; background: var(--card); border-radius: 24px; border: 1px solid var(--border); padding: 28px 24px; box-shadow: 0 8px 24px rgba(90,74,66,0.12); }
+  .join-card .eyebrow { font-size: 12px; color: var(--pink-deep); margin: 0; }
+  .join-card h1 { font-size: 22px; margin: 6px 0; }
+  .join-card .hint { font-size: 13px; color: var(--ink-soft); margin: 0 0 12px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="join" class="join-screen"></div>
+  <div id="topbar" class="top-bar" style="display:none;"></div>
+  <div id="banner-zone"></div>
+  <button id="addFab" class="fab fab--add" style="display:none;"><i class="ti ti-clipboard-plus" aria-hidden="true"></i>貼上連結／手動新增</button>
+  <button id="radarFab" class="fab fab--radar" style="display:none;" aria-label="定位"><i class="ti ti-radar" aria-hidden="true"></i></button>
+  <div id="sheet-zone"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  // ---------- 資料層：全部存在 localStorage，沒有任何後端 ----------
+  var STORE_KEY = 'zakka_simple_v1';
+
+  function loadStore(){
+    try {
+      var raw = localStorage.getItem(STORE_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch(e) {}
+    return { nickname: null, spots: [] };
+  }
+  function saveStore(){ localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
+
+  var store = loadStore();
+
+  var CATEGORY_CONFIG = {
+    cafe: { label: '咖啡廳', icon: '☕', color: '#854F0B' },
+    food: { label: '美食', icon: '🍴', color: '#993C1D' },
+    outdoor: { label: '戶外景點', icon: '♥', color: '#993556' },
+    other: { label: '其他', icon: '★', color: '#5F5E5A' }
+  };
+
+  function uid(){ return 'id-' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36); }
+
+  // ---------- 加入畫面（只問一次暱稱，存在本機） ----------
+  var joinEl = document.getElementById('join');
+  function renderJoin(){
+    if (store.nickname) { joinEl.style.display = 'none'; afterJoin(); return; }
+    joinEl.style.display = 'flex';
+    joinEl.innerHTML =
+      '<div class="join-card">' +
+        '<p class="eyebrow">歡迎來到</p>' +
+        '<h1>我的旅行願望手帳</h1>' +
+        '<p class="hint">先告訴手帳你是誰，資料只存在這支手機裡，不會上傳到任何地方。</p>' +
+        '<input class="field" id="nickInput" placeholder="輸入你的暱稱" maxlength="12" />' +
+        '<button class="btn btn--primary" id="joinBtn">出發！</button>' +
+      '</div>';
+    document.getElementById('joinBtn').onclick = function(){
+      var v = document.getElementById('nickInput').value.trim();
+      if (!v) return;
+      store.nickname = v;
+      saveStore();
+      joinEl.style.display = 'none';
+      afterJoin();
+    };
+  }
+
+  // ---------- 地圖 ----------
+  var map, markersLayer;
+  function initMap(){
+    map = L.map('map', { zoomControl: false, attributionControl: false }).setView([24.0518, 120.5161], 12);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    markersLayer = L.layerGroup().addTo(map);
+    renderMarkers();
+  }
+
+  function renderMarkers(){
+    markersLayer.clearLayers();
+    store.spots.forEach(function(spot){
+      if (spot.lat == null || spot.lng == null) return;
+      var color = spot.status === 'visited' ? '#BA7517' : '#888780';
+      var marker = L.circleMarker([spot.lat, spot.lng], {
+        radius: 9, fillColor: color, fillOpacity: 1, color: '#FDF1D8', weight: 2
+      }).addTo(markersLayer);
+      marker.bindTooltip(spot.name, { direction: 'top', offset: [0, -8] });
+      marker.on('click', function(){ openSheet(spot.id); });
+    });
+  }
+
+  // ---------- 頂部狀態列、雷達、新增按鈕 ----------
+  function afterJoin(){
+    document.getElementById('topbar').style.display = 'flex';
+    document.getElementById('topbar').innerHTML =
+      '<span class="pill"><i class="ti ti-map-pin" aria-hidden="true"></i> ' + store.spots.length + ' 個收藏</span>' +
+      '<span class="pill">' + store.nickname + '</span>';
+    document.getElementById('addFab').style.display = 'flex';
+    document.getElementById('radarFab').style.display = 'flex';
+
+    document.getElementById('radarFab').onclick = function(){
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(function(pos){
+        map.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { duration: 0.8 });
+      });
+    };
+
+    document.getElementById('addFab').onclick = openAddFlow;
+  }
+
+  function refreshTopbarCount(){
+    var pill = document.querySelector('#topbar .pill');
+    if (pill) pill.innerHTML = '<i class="ti ti-map-pin" aria-hidden="true"></i> ' + store.spots.length + ' 個收藏';
+  }
+
+  // ---------- 新增景點：剪貼簿偵測 + 手動輸入 ----------
+  var GMAPS_PATTERN = /(maps\.app\.goo\.gl|google\.com\/maps|goo\.gl\/maps)/i;
+
+  function extractFromUrl(longUrl){
+    var coordMatch = longUrl.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+    if (coordMatch) return { lat: parseFloat(coordMatch[1]), lng: parseFloat(coordMatch[2]) };
+    var placeMatch = longUrl.match(/\/place\/([^/@]+)/);
+    if (placeMatch) return { query: decodeURIComponent(placeMatch[1].replace(/\+/g, ' ')) };
+    return {};
+  }
+
+  async function resolveFromGoogleUrl(url){
+    var longUrl = url;
+    try {
+      var res = await fetch(url, { redirect: 'follow', mode: 'no-cors' });
+      // no-cors 模式下無法讀取最終網址（瀏覽器安全限制），所以短連結在純前端版本較難 100% 自動展開，
+      // 退而求其次：直接嘗試用原始網址解析座標，抓不到就走手動輸入
+    } catch(e) {}
+    var extracted = extractFromUrl(longUrl);
+    var place = { name: '', address: '', lat: null, lng: null, category: 'other', source_url: url };
+    if (extracted.lat) {
+      place.lat = extracted.lat; place.lng = extracted.lng;
+      try {
+        var rRes = await fetch('https://nominatim.openstreetmap.org/reverse?lat=' + extracted.lat + '&lon=' + extracted.lng + '&format=jsonv2', {
+          headers: { 'Accept-Language': 'zh-TW' }
+        });
+        var rData = await rRes.json();
+        place.name = rData.name || (rData.display_name ? rData.display_name.split(',')[0] : '未命名地點');
+        place.address = rData.display_name || '';
+        place.category = mapNominatimCategory(rData.class, rData.type);
+      } catch(e) { place.name = '未命名地點'; }
+    } else if (extracted.query) {
+      place.name = extracted.query;
+      try {
+        var sRes = await fetch('https://nominatim.openstreetmap.org/search?q=' + encodeURIComponent(extracted.query) + '&format=jsonv2&limit=1', {
+          headers: { 'Accept-Language': 'zh-TW' }
+        });
+        var sData = await sRes.json();
+        if (sData[0]) {
+          place.lat = parseFloat(sData[0].lat);
+          place.lng = parseFloat(sData[0].lon);
+          place.address = sData[0].display_name || '';
+          place.category = mapNominatimCategory(sData[0].class, sData[0].type);
+        }
+      } catch(e) {}
+    }
+    return place;
+  }
+
+  function mapNominatimCategory(cls, type){
+    if (type === 'cafe' || type === 'bakery') return 'cafe';
+    if (cls === 'amenity' && ['restaurant','fast_food','food_court','bar','pub'].indexOf(type) !== -1) return 'food';
+    if (cls === 'tourism' || cls === 'leisure' || cls === 'natural' || type === 'park') return 'outdoor';
+    return 'other';
+  }
+
+  var lastClipboardText = '';
+  async function checkClipboard(){
+    try {
+      var text = await navigator.clipboard.readText();
+      if (!text || text === lastClipboardText || !GMAPS_PATTERN.test(text)) return false;
+      lastClipboardText = text;
+      showBanner(text);
+      return true;
+    } catch(e) { return false; }
+  }
+
+  function showBanner(url){
+    var zone = document.getElementById('banner-zone');
+    zone.innerHTML =
+      '<div class="banner">' +
+        '<div>' +
+          '<p class="title">啵！抓到新景點囉！要收進口袋嗎？(๑•̀ㅂ•́)و✧</p>' +
+          '<p class="name" id="bannerName">解析中…</p>' +
+        '</div>' +
+        '<div class="actions">' +
+          '<button class="btn btn--ghost" id="bannerSkip">先不要</button>' +
+          '<button class="btn btn--primary" id="bannerOk">收進口袋</button>' +
+        '</div>' +
+      '</div>';
+    document.getElementById('bannerSkip').onclick = function(){ zone.innerHTML = ''; };
+
+    resolveFromGoogleUrl(url).then(function(place){
+      var nameEl = document.getElementById('bannerName');
+      if (nameEl) nameEl.textContent = place.name || '查無資料，仍可手動補資訊';
+      document.getElementById('bannerOk').onclick = function(){
+        zone.innerHTML = '';
+        var spot = createSpot(place.name || '未命名地點', place.category, place.address, place.lat, place.lng, url);
+        renderMarkers();
+        refreshTopbarCount();
+        openSheet(spot.id, true);
+      };
+    });
+  }
+
+  function openAddFlow(){
+    checkClipboard().then(function(found){
+      if (found) return;
+      // 剪貼簿沒有地圖連結（或讀取被拒絕），改成手動輸入店名的簡易表單
+      openManualAddSheet();
+    });
+  }
+
+  function openManualAddSheet(){
+    var zone = document.getElementById('sheet-zone');
+    zone.innerHTML =
+      '<div class="overlay" id="overlay">' +
+        '<div class="sheet" onclick="event.stopPropagation()">' +
+          '<div class="handle"></div>' +
+          '<h2>手動新增景點</h2>' +
+          '<p class="addr">剪貼簿沒偵測到地圖連結，直接輸入店名也可以</p>' +
+          '<input class="field" id="manualName" placeholder="店名，例如：小日子咖啡" />' +
+          '<select class="field" id="manualCategory">' +
+            '<option value="cafe">咖啡廳</option>' +
+            '<option value="food">美食</option>' +
+            '<option value="outdoor">戶外景點</option>' +
+            '<option value="other">其他</option>' +
+          '</select>' +
+          '<input class="field" id="manualAddress" placeholder="地址（選填）" />' +
+          '<p class="addr">提示：可以先在地圖上找到位置，點一下地圖空白處再按下方按鈕，會用該座標建立景點；不點的話會建立在地圖中心點。</p>' +
+          '<button class="btn btn--primary" id="manualSubmit">收進口袋</button>' +
+        '</div>' +
+      '</div>';
+
+    var pickedLatLng = null;
+    function onMapClick(e){ pickedLatLng = e.latlng; }
+    map.on('click', onMapClick);
+
+    document.getElementById('overlay').onclick = function(){ closeSheetZone(); map.off('click', onMapClick); };
+    document.getElementById('manualSubmit').onclick = function(){
+      var name = document.getElementById('manualName').value.trim();
+      if (!name) return;
+      var category = document.getElementById('manualCategory').value;
+      var address = document.getElementById('manualAddress').value.trim();
+      var center = pickedLatLng || map.getCenter();
+      var spot = createSpot(name, category, address, center.lat, center.lng, null);
+      map.off('click', onMapClick);
+      closeSheetZone();
+      renderMarkers();
+      refreshTopbarCount();
+      openSheet(spot.id, true);
+    };
+  }
+
+  function createSpot(name, category, address, lat, lng, sourceUrl){
+    var spot = {
+      id: uid(), name: name, category: category || 'other', address: address || '',
+      lat: lat, lng: lng, source_url: sourceUrl || null, status: 'wishlist', reviews: []
+    };
+    store.spots.push(spot);
+    saveStore();
+    return spot;
+  }
+
+  // ---------- 評價手帳內頁 ----------
+  function closeSheetZone(){ document.getElementById('sheet-zone').innerHTML = ''; }
+
+  function openSheet(spotId, startEditing){
+    var spot = store.spots.find(function(s){ return s.id === spotId; });
+    if (!spot) return;
+    var config = CATEGORY_CONFIG[spot.category] || CATEGORY_CONFIG.other;
+    var myReview = spot.reviews.find(function(r){ return r.nickname === store.nickname; });
+
+    var reviewsHtml = spot.reviews.length === 0
+      ? '<p class="empty-hint">還沒有人留下心得，當第一個踩點的人吧！</p>'
+      : spot.reviews.map(function(r){
+          var photos = (r.photos || []).map(function(p){ return '<img src="' + p + '" alt="" />'; }).join('');
+          return '<div class="review-card">' +
+            '<div class="review-card__avatar">' + r.nickname.charAt(0) + '</div>' +
+            '<div>' +
+              '<p class="review-card__name">' + escapeHtml(r.nickname) + ' <span style="color:' + config.color + '">' + config.icon.repeat(r.rating) + '</span></p>' +
+              (r.note ? '<p class="review-card__note">' + escapeHtml(r.note) + '</p>' : '') +
+              (photos ? '<div class="review-card__photos">' + photos + '</div>' : '') +
+            '</div>' +
+          '</div>';
+        }).join('');
+
+    var zone = document.getElementById('sheet-zone');
+    zone.innerHTML =
+      '<div class="overlay" id="overlay">' +
+        '<div class="sheet" onclick="event.stopPropagation()">' +
+          '<div class="handle"></div>' +
+          '<span class="badge">' + config.label + '</span>' +
+          '<h2>' + escapeHtml(spot.name) + '</h2>' +
+          (spot.address ? '<p class="addr">' + escapeHtml(spot.address) + '</p>' : '<p class="addr">&nbsp;</p>') +
+          '<div id="reviewsZone">' + reviewsHtml + '</div>' +
+          (myReview ? '' : '<button class="btn btn--primary" id="ctaBtn" style="margin-top:12px;">留下我的心得</button>') +
+          '<div id="formZone"></div>' +
+          '<div class="btn-row" style="margin-top:16px;">' +
+            '<button class="btn btn--ghost" id="deleteSpotBtn">刪除這個景點</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+
+    document.getElementById('overlay').onclick = closeSheetZone;
+    document.getElementById('deleteSpotBtn').onclick = function(){
+      store.spots = store.spots.filter(function(s){ return s.id !== spotId; });
+      saveStore();
+      renderMarkers();
+      refreshTopbarCount();
+      closeSheetZone();
+    };
+
+    var ctaBtn = document.getElementById('ctaBtn');
+    if (ctaBtn) ctaBtn.onclick = function(){ renderReviewForm(spot, config); };
+    if (startEditing && !myReview) renderReviewForm(spot, config);
+  }
+
+  function renderReviewForm(spot, config){
+    var formZone = document.getElementById('formZone');
+    var rating = 0;
+    var photos = [];
+
+    function ratingHtml(){
+      var html = '<div class="rating-row" id="ratingRow">';
+      for (var i = 1; i <= 5; i++) {
+        html += '<button type="button" class="rating-icon' + (i <= rating ? ' active' : '') + '" data-i="' + i + '">' + config.icon + '</button>';
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function photoSlotsHtml(){
+      var html = '<div class="photo-row">';
+      for (var i = 0; i < 3; i++) {
+        if (photos[i]) {
+          html += '<div class="photo-slot" data-i="' + i + '"><img src="' + photos[i] + '" /><span class="remove" data-remove="' + i + '"><i class="ti ti-x" aria-hidden="true"></i></span></div>';
+        } else {
+          html += '<div class="photo-slot" data-add="' + i + '"><i class="ti ti-plus" aria-hidden="true"></i></div>';
+        }
+      }
+      html += '</div>';
+      return html;
+    }
+
+    function render(){
+      formZone.innerHTML =
+        ratingHtml() +
+        '<textarea class="field" id="noteInput" maxlength="140" placeholder="寫點什麼吧（最多 140 字）"></textarea>' +
+        photoSlotsHtml() +
+        '<input type="file" accept="image/*" id="fileInput" style="display:none" />' +
+        '<button class="btn btn--primary" id="submitReview">蓋上手帳印章</button>';
+
+      formZone.querySelectorAll('.rating-icon').forEach(function(btn){
+        btn.onclick = function(){
+          rating = parseInt(this.dataset.i);
+          render();
+        };
+      });
+
+      formZone.querySelectorAll('[data-add]').forEach(function(slot){
+        slot.onclick = function(){
+          var idx = parseInt(this.dataset.add);
+          var fileInput = document.getElementById('fileInput');
+          fileInput.onchange = function(){
+            var file = fileInput.files[0];
+            if (!file) return;
+            var reader = new FileReader();
+            reader.onload = function(e){
+              photos[idx] = e.target.result; // 存成 base64，純前端不需要任何上傳伺服器
+              render();
+            };
+            reader.readAsDataURL(file);
+          };
+          fileInput.click();
+        };
+      });
+      formZone.querySelectorAll('[data-remove]').forEach(function(btn){
+        btn.onclick = function(e){
+          e.stopPropagation();
+          photos[parseInt(this.dataset.remove)] = null;
+          render();
+        };
+      });
+
+      document.getElementById('submitReview').onclick = function(){
+        if (rating === 0) return;
+        var note = document.getElementById('noteInput').value.trim();
+        spot.reviews.push({
+          nickname: store.nickname,
+          rating: rating,
+          note: note,
+          photos: photos.filter(Boolean)
+        });
+        spot.status = 'visited';
+        saveStore();
+        renderMarkers();
+        openSheet(spot.id); // 重新渲染整個 sheet，顯示剛送出的評價
+      };
+    }
+    render();
+  }
+
+  function escapeHtml(s){
+    var div = document.createElement('div');
+    div.textContent = s;
+    return div.innerHTML;
+  }
+
+  // ---------- 啟動 ----------
+  initMap();
+  renderJoin();
+
+  document.addEventListener('visibilitychange', function(){
+    if (document.visibilityState === 'visible' && store.nickname) checkClipboard();
+  });
+})();
+</script>
+</body>
+</html>
